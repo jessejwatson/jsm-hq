@@ -47,6 +47,7 @@ export function mockSetup(): SetupState {
       ok("claude", "Claude Code", "installed (mock)", "local"),
       ok("gh", "GitHub CLI", "signed in (mock)", "github"),
     ],
+    provider: { kind: "github", name: "GitHub", baseUrl: null, host: "github.com", repo: "jsmastery-pro/askwell", source: "github.com" },
     sandboxReady: true,
     localReady: true,
     checkedAt: now(),

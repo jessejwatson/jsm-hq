@@ -89,6 +89,10 @@ export interface ProjectConfig {
   repo: string; // "jsmastery-pro/askwell"
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
+  /** Where PRs live. Default "auto": github.com is GitHub; any other host is probed for a Gitea/Forgejo API. */
+  provider?: "auto" | "github" | "gitea";
+  /** Gitea/Forgejo web address (e.g. "https://git.example.com" or ".../git" under a subpath). Empty = derived from origin. */
+  baseUrl?: string;
   exportPlan?: boolean; // also write the plan to docs/plan.md
   officeName?: string; // the sign on the office wall; empty = "JSM HQ"
 }
@@ -246,7 +250,23 @@ export interface RemoveAgentOptions {
 
 // ---------------------------------------------------------------- Setup
 
-export type SetupCheckId = "os" | "sbx" | "sbx-login" | "sbx-policy" | "tmux" | "gh" | "gh-remote" | "github-secret" | "claude" | "codex" | "openai-secret";
+export type SetupCheckId =
+  | "os" | "sbx" | "sbx-login" | "sbx-policy" | "tmux" | "gh" | "gh-remote" | "github-secret" | "claude" | "codex" | "openai-secret"
+  | "gitea-token" | "gitea-remote" | "gitea-access";
+
+/** Which git host the project's PRs live on. */
+export type ProviderKind = "github" | "gitea";
+export interface ProviderInfo {
+  kind: ProviderKind;
+  /** What to call it in the UI: "GitHub", "Gitea" or "Forgejo". */
+  name: string;
+  /** Web address of a Gitea/Forgejo server; null for GitHub. */
+  baseUrl: string | null;
+  host: string;
+  /** "owner/name" on that host. */
+  repo: string;
+  source: "github.com" | "probe" | "override";
+}
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
 export interface SetupFix {
@@ -322,6 +342,8 @@ export interface MachineInfo {
 export interface SetupState {
   machine: MachineInfo;
   checks: SetupCheck[];
+  /** Where PRs live; null when origin is neither GitHub nor a Gitea/Forgejo server HQ could find. */
+  provider: ProviderInfo | null;
   sandboxReady: boolean; // every sandbox check passes
   localReady: boolean; // Local mode can run
   checkedAt: string;

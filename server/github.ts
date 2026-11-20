@@ -3,6 +3,7 @@
 
 import type { PullRequest, ReviewState, ReviewTool } from "../src/data/types";
 import { run } from "./lib/exec";
+import type { Provider } from "./provider";
 
 // ---------------------------------------------------------------- query
 
@@ -193,5 +194,18 @@ export function toPullRequest(pr: GhPr, tool: ReviewTool, reviewEnabled: boolean
     closed: pr.state === "CLOSED",
     conflict: pr.mergeable === "CONFLICTING",
     reviewNote: pr.isDraft ? "Draft" : r.note,
+  };
+}
+
+// ---------------------------------------------------------------- provider
+
+export function githubProvider(repo: string): Provider {
+  const [owner = "", name = ""] = repo.split("/");
+  return {
+    info: { kind: "github", name: "GitHub", baseUrl: null, host: "github.com", repo: `${owner}/${name}`, source: "github.com" },
+    fetchPrs: () => fetchPrs(repo),
+    readyCheck: "gh",
+    mergeCommand: (n) => `gh pr merge ${n} --squash --delete-branch`,
+    commentsHint: (n) => `\`gh pr view ${n} --comments\` (or the GitHub API)`,
   };
 }

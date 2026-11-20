@@ -6,7 +6,7 @@ import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
 import { stackRoleMd } from "../src/data/stack";
-import type { AgentConfig, HqConfig } from "../src/data/types";
+import type { AgentConfig, HqConfig, ProviderInfo } from "../src/data/types";
 
 /** Team MCP config, passed with `claude --mcp-config` (so the project's own .mcp.json is untouched). */
 export const MCP_CONFIG = ".claude/hq-mcp.json";
@@ -20,6 +20,20 @@ export const HQ_FILES = [ROLE_FILE, ".claude/settings.local.json", MCP_CONFIG, H
 export interface RoleExtras {
   ownRole?: string | null;
   hasEnvFile?: boolean;
+  /** Where PRs live; null/GitHub keeps the `gh` instructions. */
+  provider?: ProviderInfo | null;
+}
+
+/** How agents open and merge PRs on this host. GitHub uses `gh`; Gitea/Forgejo has no `gh`, so the REST API (token in GITEA_TOKEN). */
+export function prHowTo(p: ProviderInfo | null | undefined) {
+  if (p?.kind !== "gitea")
+    return { open: "open them with `gh pr create`", merge: "`gh pr merge <number> --squash --delete-branch`", host: "" };
+  const api = `${p.baseUrl}/api/v1/repos/${p.repo}`;
+  return {
+    open: `open them with \`tea pulls create\` if it's installed, otherwise POST ${api}/pulls with {"title","head","base","body"} (header \`Authorization: token $GITEA_TOKEN\`)`,
+    merge: `\`curl -fsS -X POST -H "Authorization: token $GITEA_TOKEN" -H "Content-Type: application/json" -d '{"Do":"squash","delete_branch_after_merge":true}' ${api}/pulls/<number>/merge\``,
+    host: `This project's git host is ${p.name} (${p.baseUrl}), not GitHub: there is no \`gh\`. The token is in the GITEA_TOKEN variable; push with \`git push https://oauth2:$GITEA_TOKEN@${p.host}/${p.repo}.git <branch>\` if plain \`git push\` can't authenticate.`,
+  };
 }
 
 /** HQ ≤ 0.3 wrote its role to ROLE.md; recognise that so it can be cleaned up. */
@@ -104,13 +118,14 @@ export function hqUrl(agent: AgentConfig, port: number): string {
 
 export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {}): string {
   const team = cfg.team.map((a) => `- ${a.name} — ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`).join("\n");
+  const how = prHowTo(extras.provider);
   const rules = agent.isLead
     ? [
         "You plan the work and assign it to the team. You never write app code.",
         "Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.",
         "Assign only to agents that are running and free (check list_workers).",
         cfg.workflow.merge.by === "lead"
-          ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
+          ? `You merge PRs once they pass review (${how.merge}), one at a time, in an order that avoids conflicts. HQ tells you when each one passes.`
           : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
         "If the user changes who merges, HQ tells you. Follow the latest message.",
       ]
@@ -118,10 +133,11 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
         "Work only on the task you were given. One task = one branch = one PR.",
         "When HQ tells you to start a task, call get_my_task first, then `git pull origin main` and create a branch.",
         "Edit only the files the task lists. Need another file? Ask the lead with send_message.",
-        "Title PRs `[TASK-ID] Short title` and open them with `gh pr create`, then call set_my_status in-review with the PR number.",
+        `Title PRs \`[TASK-ID] Short title\` and ${how.open}, then call set_my_status in-review with the PR number.`,
         "set_my_status tells the lead automatically. Don't also send_message the same news.",
         "If you are blocked or need a decision, call set_my_status blocked with the reason.",
       ];
+  if (how.host) rules.push(how.host);
   rules.push(
     "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );

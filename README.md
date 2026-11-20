@@ -17,12 +17,12 @@ Agents run **Claude Code** or **Codex**. Everything runs on your machine.
 - **A real team, not one chat.** The lead splits the work into small tasks (one task, one branch, one PR) and assigns them. Agents message each other through HQ.
 - **Safe by default.** Each agent works in its own Docker Sandbox, a small VM that can't touch the rest of your computer. Websites are blocked until you allow them.
 - **You stay in charge.** Anything an agent needs from you (a decision, an API key, a blocked website) shows up in **Action items**. HQ never merges for you.
-- **Your workflow.** Pull requests on GitHub, reviewed by CodeRabbit, Greptile, Copilot or you.
+- **Your workflow.** Pull requests on GitHub, Gitea or Forgejo, reviewed by CodeRabbit, Greptile, Copilot or you.
 - **Knows your stack.** Pick your tools (Next.js, Clerk, Stripe, Supabase…) and agents get their official agent skills and docs access.
 
 ## Quick start
 
-From inside a git repo that has a GitHub remote:
+From inside a git repo that has a GitHub, Gitea or Forgejo remote:
 
 ```bash
 npx @therealjsmastery/jsm-hq@latest
@@ -60,8 +60,9 @@ Use it often? `npm install -g @therealjsmastery/jsm-hq`, then run `jsm-hq` in an
 | What | Why |
 | --- | --- |
 | Node.js 20+ | Runs HQ |
-| git and a GitHub repo | Each agent clones it, pushes a branch and opens a PR |
-| GitHub CLI (`gh`) | Reads PRs and reviews |
+| git and a GitHub, Gitea or Forgejo repo | Each agent clones it, pushes a branch and opens a PR |
+| GitHub CLI (`gh`) | Reads PRs and reviews (GitHub only) |
+| An access token (`GITEA_TOKEN`) | Reads PRs and reviews (Gitea and Forgejo only; see [Gitea and Forgejo](docs/how-it-works.md#gitea-and-forgejo)) |
 | Docker Sandboxes (`sbx`) | Each agent runs in its own VM |
 | tmux (macOS, Linux) | Agents keep running if you close HQ |
 | A Claude or ChatGPT account | For the agents themselves |
@@ -76,13 +77,25 @@ You don't need to install these by hand first. HQ checks for each one and shows 
 
 1. **You tell the lead what to build.** It creates a board of small tasks, each with the files it may touch, and assigns them.
 2. **Workers build in their own sandboxes.** Each one pulls `main`, makes a branch, writes the code and opens a PR titled `[TASK-ID] …`.
-3. **HQ follows the PRs on GitHub.** Review comments go back to the author; a passing PR is reported to the lead; a merged PR marks the task done.
+3. **HQ follows the PRs on your git host.** Review comments go back to the author; a passing PR is reported to the lead; a merged PR marks the task done.
 4. **Agents ask when they're stuck.** A question, a blocked website or a missing key shows up in **Action items** and on the agent's card.
 5. **You review and merge.**
 
 Click any agent to open its drawer: its live terminal, a shell inside its sandbox, its task, its messages, and the websites it tried to reach. Drag the drawer's edge to make it wider, or maximize it. **Terminal** in the top bar opens your own shell in the repo or any agent's folder.
 
 More detail on workspaces, sandboxes, MCP servers, app variables and what HQ saves: **[How it works](docs/how-it-works.md)**.
+
+## Use from another device
+
+By default HQ only listens on `127.0.0.1`. To open the console from a phone or another computer:
+
+```bash
+npx @therealjsmastery/jsm-hq@latest --host 0.0.0.0     # or: HQ_HOST=0.0.0.0
+```
+
+HQ prints the link to open (this machine's network address plus your token) as its first line. `--allow-origin https://hq.example.com` (repeatable) adds a custom name, e.g. for a reverse proxy.
+
+**The console includes terminals, so this is remote shell access.** Anyone with the link can control your agents, and `--host` serves plain `http`: the token and terminal traffic are unencrypted. Use a trusted network, a VPN such as Tailscale (`--host <tailscale ip>`), an SSH tunnel (`ssh -L 7420:127.0.0.1:7420 you@this-machine`, no `--host` needed), or an HTTPS reverse proxy. Details: [Getting started](docs/getting-started.md#use-from-another-device).
 
 ## Troubleshooting
 
@@ -91,11 +104,12 @@ More detail on workspaces, sandboxes, MCP servers, app variables and what HQ sav
 | A setup check shows "!" but the tool works | You may be on an old HQ. Run `npx @therealjsmastery/jsm-hq@latest` (npx can keep an old version cached). |
 | Start fails: "network policy has not been initialized" | A new Docker Sandboxes install needs a base policy once: `sbx policy init balanced`. |
 | Agents fail to start with a sign-in error | Your Docker sign-in expired. Run `sbx login`, then **Check again** in the setup checklist. |
-| Agents can't push or open PRs | Run `sbx secret set github --command "gh auth token"`, and check the repo has a GitHub `origin`. |
+| Agents can't push or open PRs | On GitHub: run `sbx secret set github --command "gh auth token"`, and check the repo has a GitHub `origin`. On Gitea or Forgejo: allow the host (`sbx policy allow network <host>`) and add `GITEA_TOKEN` to the agent's App variables. |
 | A Codex agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. HQ never answers trust prompts for you. |
 | A CLI sign-in in a sandbox opens the browser, then fails on `localhost:<port>` | Press **Forward port** in the agent's drawer, then reload the page. |
 | An agent's state never changes | The sandbox can't reach HQ. `sbx policy ls` should show `localhost:<port>` and `host.docker.internal:<port>` allowed; HQ adds them on start. |
 | "Port 7420 is in use" | Another HQ is running. Stop it, or use `--port 7421`. |
+| Another device can't open the console | Start HQ with `--host 0.0.0.0` and allow the port in your firewall. See [Use from another device](#use-from-another-device). |
 | Windows: `listen EACCES` on start | Windows reserved that port. Use `--port 8420`. |
 | `posix_spawnp failed` when opening a terminal | Run `npx clear-npx-cache`, then `npx @therealjsmastery/jsm-hq@latest`. |
 

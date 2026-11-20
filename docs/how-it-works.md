@@ -1,11 +1,12 @@
 # How JSM HQ works
 
-What HQ does behind the office: where agents work, how they talk, what reaches GitHub, and what HQ saves. New here? Start with the [getting-started guide](getting-started.md).
+What HQ does behind the office: where agents work, how they talk, what reaches your git host, and what HQ saves. New here? Start with the [getting-started guide](getting-started.md).
 
 - [The team](#the-team)
 - [Workspaces and sessions](#workspaces-and-sessions)
 - [Messages between agents](#messages-between-agents)
 - [GitHub and reviews](#github-and-reviews)
+- [Gitea and Forgejo](#gitea-and-forgejo)
 - [Sandboxes and network access](#sandboxes-and-network-access)
 - [Terminals, links and ports](#terminals-links-and-ports)
 - [Action items](#action-items)
@@ -52,6 +53,30 @@ HQ reads your PRs, checks and review comments with your `gh` login, about every 
 **HQ never merges.** You merge on GitHub.
 
 Pick the review tool in Settings → Workflow: CodeRabbit, Greptile, Copilot, you, or your own.
+
+## Gitea and Forgejo
+
+HQ also works with [Gitea](https://about.gitea.com) and [Forgejo](https://forgejo.org) servers. They share one API (`/api/v1`), so one integration covers both. Everything in the section above applies; only the way HQ reads the PRs differs.
+
+**Detection.** HQ reads your `origin` URL (https or ssh, custom ports and subpaths included). `github.com` is GitHub. For any other host HQ asks `https://<host>/api/v1/version`; if that answers, the project is a Gitea or Forgejo project, and the office, PR drawer and setup checklist say so. If the server isn't found (for example it sits behind a different address than the one in `origin`), go to **Settings → Project**: set **Git host** to *Gitea / Forgejo* and, if needed, type the server address (`https://git.example.com`, or `https://example.com/git` under a subpath). The setting is saved in `.jsmhq/config.json` as `project.provider` and `project.baseUrl`.
+
+**Token.** HQ reads PRs with an access token, not `gh`.
+
+1. In Gitea or Forgejo open **Settings → Applications → Generate New Token**.
+2. Give it **read** access to **repository** (that covers pull requests and reviews). Agents that push and open PRs need **write** access to repository; you can use a separate token for them.
+3. Start HQ with the token in its environment: `GITEA_TOKEN=<token> npx @therealjsmastery/jsm-hq@latest` (`FORGEJO_TOKEN` works too).
+
+The setup checklist shows **Gitea token** (or **Forgejo token**) and checks that it can read your repo. The token is sent as `Authorization: token <token>` and never leaves HQ's process.
+
+**Sandboxes.** Agents run in sandboxes that block unknown hosts. The checklist's **Gitea access inside sandboxes** row shows whether the host is allowed; if not, run `sbx policy allow network <host>`. Agents need the token too: add `GITEA_TOKEN` to their App variables (Settings → Sandbox) and restart them. Agents have no `gh` here: their instructions tell them to push with git and open and merge PRs through the Gitea API (or `tea`, if installed).
+
+**What differs from GitHub**
+
+- Review checks and comments are read from Gitea's reviews, review comments and commit statuses. A review comment counts as open until it's resolved.
+- The Copilot review tool is GitHub-only.
+- Gitea has no hourly budget like GitHub's, so HQ polls every 20 seconds.
+- Merge conflicts are detected from Gitea's `mergeable` flag; HQ checks twice before telling an author, because Gitea reports `false` while it is still working it out.
+- Servers with a self-signed or private-CA certificate are not supported out of the box. Start HQ with `NODE_EXTRA_CA_CERTS=/path/to/ca.pem` to trust your CA.
 
 ## Sandboxes and network access
 

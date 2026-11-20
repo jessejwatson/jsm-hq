@@ -58,7 +58,9 @@ function SoundPicker() {
 
 export function ProjectSettings() {
   const project = useOffice((s) => s.snap?.config.project);
+  const provider = useOffice((s) => s.snap?.setup.provider);
   if (!project) return null;
+  const mode = project.provider ?? "auto";
   return (
     <div className="flex flex-col gap-5">
       <FontPicker />
@@ -79,9 +81,28 @@ export function ProjectSettings() {
             onCommit={(v) => officeActions.updateProject({ officeName: v.trim() })}
           />
         </Field>
-        <Field label="GitHub repo" hint="owner/name. HQ only reads PRs, checks and comments.">
+        <Field label={`${provider?.name ?? "Git"} repo`} hint="owner/name. HQ only reads PRs, checks and comments.">
           <CommitInput className="field font-term text-[17px]" value={project.repo} onCommit={(v) => v.trim() && officeActions.updateProject({ repo: v.trim() })} />
         </Field>
+        <Field
+          label="Git host"
+          hint={
+            provider
+              ? `Using ${provider.name}${provider.baseUrl ? ` at ${provider.baseUrl}` : ""}. Auto: github.com is GitHub; any other host is checked for a Gitea or Forgejo API.`
+              : "HQ couldn't tell what origin is. Pick Gitea / Forgejo and enter the server address."
+          }
+        >
+          <select className="field" value={mode} onChange={(e) => officeActions.updateProject({ provider: e.target.value as "auto" | "github" | "gitea" })}>
+            <option value="auto">Auto-detect</option>
+            <option value="github">GitHub</option>
+            <option value="gitea">Gitea / Forgejo</option>
+          </select>
+        </Field>
+        {mode !== "github" && (
+          <Field label="Gitea / Forgejo address" hint="Only if detection fails or the server is behind another address, e.g. https://git.example.com or https://example.com/git. HQ reads <address>/api/v1 with GITEA_TOKEN.">
+            <CommitInput className="field font-term text-[17px]" value={project.baseUrl ?? ""} placeholder="https://git.example.com" onCommit={(v) => officeActions.updateProject({ baseUrl: v.trim() })} />
+          </Field>
+        )}
         <Field label="Local path">
           <CommitInput className="field font-term text-[17px]" value={project.path} onCommit={(v) => v.trim() && officeActions.updateProject({ path: v.trim() })} />
         </Field>
@@ -100,7 +121,7 @@ export function ProjectSettings() {
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />
         <p className="mt-1 text-[13px] text-muted">
-          HQ keeps the plan in .jsmhq/plan.json. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
+          HQ keeps the plan in .jsmhq/plan.json. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on your git host. Edits to that file are overwritten.
         </p>
       </section>
       <section className="text-[13px] text-muted">

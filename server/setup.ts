@@ -7,6 +7,8 @@ import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
 import type { RepoInfo } from "./repo";
+import { GITEA_TOKEN_ENV, GiteaClient, giteaToken } from "./gitea";
+import type { ProviderInfo } from "../src/data/types";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
 const os = platform();
@@ -155,7 +157,9 @@ function checkRemote(repo: RepoInfo): Check {
   return {
     ...base,
     status: "warning",
-    detail: repo.originUrl ? `origin is ${repo.originUrl} (not GitHub)` : "No origin remote. Agents can't push or open PRs.",
+    detail: repo.originUrl
+      ? `origin is ${repo.originUrl} (not GitHub). ${repo.providerReason ?? ""}`.trim()
+      : "No origin remote. Agents can't push or open PRs.",
     fix: fix("gh repo create --source . --private --push", false, "https://cli.github.com/manual/gh_repo_create"),
   };
 }
@@ -170,6 +174,45 @@ async function checkGithubSecret(sbxOk: boolean): Promise<Check> {
     status: "missing",
     detail: "Agents can't push or open PRs until this is set.",
     fix: fix("sbx secret set github --command 'gh auth token'", true, "https://docs.docker.com/ai/sandboxes/get-started/"),
+  };
+}
+
+// ---------------------------------------------------------------- Gitea / Forgejo
+
+const tokenFix = (p: ProviderInfo) => fix(`export ${GITEA_TOKEN_ENV[0]}=<your token>   # then restart HQ`, false, `${p.baseUrl}/user/settings/applications`);
+
+/** The token HQ itself uses to read PRs (the GITEA_TOKEN variable in HQ's environment). Checked against the repo itself, so a token scoped to repositories only still passes. */
+export async function checkGiteaToken(p: ProviderInfo, token = giteaToken(), client = new GiteaClient(p.baseUrl ?? "", () => token)): Promise<Check> {
+  const base = { id: "gitea-token" as const, label: `${p.name} token (reads PRs and reviews)`, neededFor: "github" as const };
+  if (!token) return { ...base, status: "missing", detail: `${GITEA_TOKEN_ENV[0]} isn't set in the environment HQ runs in. Create a token with read access to repositories and pull requests.`, fix: tokenFix(p) };
+  try {
+    await client.get(`/repos/${p.repo}`);
+    return { ...base, status: "ok", detail: `Can read ${p.repo} on ${p.host}`, fix: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // A rejected token is fixable by the user; an unreachable server is only a warning.
+    return /401|403/.test(msg) ? { ...base, status: "missing", detail: msg, fix: tokenFix(p) } : { ...base, status: "warning", detail: msg, fix: null };
+  }
+}
+
+function checkGiteaRemote(p: ProviderInfo): Check {
+  const how = p.source === "override" ? "set in Settings" : "found at /api/v1/version";
+  return { id: "gitea-remote", label: `${p.name} remote`, neededFor: "github", status: "ok", detail: `${p.repo} on ${p.host} (${how})`, fix: null };
+}
+
+/** Sandboxes need a network rule for the Gitea host; the token reaches agents as an App variable. */
+async function checkGiteaAccess(p: ProviderInfo, sbxOk: boolean): Promise<Check> {
+  const base = { id: "gitea-access" as const, label: `${p.name} access inside sandboxes`, neededFor: "sandbox" as const };
+  if (!sbxOk) return { ...base, status: "missing", detail: "Waiting for sbx.", fix: null };
+  const { verdict, out } = await policyVerdict(p.host);
+  if (verdict === "denied")
+    return { ...base, status: "missing", detail: `Sandboxes can't reach ${p.host} yet, so agents can't push or open PRs.`, fix: fix(`sbx policy allow network ${p.host}`, true, "https://docs.docker.com/ai/sandboxes/") };
+  if (!verdict) return { ...base, status: "warning", detail: out.trim().split("\n")[0] || "sbx did not respond.", fix: null };
+  return {
+    ...base,
+    status: "ok",
+    detail: `Sandboxes can reach ${p.host}. Agents also need the token: add ${GITEA_TOKEN_ENV[0]} to App variables (Settings → Sandbox).`,
+    fix: null,
   };
 }
 
@@ -197,11 +240,20 @@ async function checkOpenAiSecret(sbxOk: boolean): Promise<Check> {
 /** `team` adds the Codex checks only when the team has Codex agents. */
 export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): Promise<SetupState> {
   const brew = os === "darwin" && (await has("brew"));
-  const [osCheck, sbx, tmux, claude, gh] = await Promise.all([checkOs(), checkSbx(brew), checkTmux(brew), checkClaude(), checkGh(brew)]);
+  const provider = repo.provider?.info ?? null;
+  const gitea = provider?.kind === "gitea" ? provider : null;
+  const [osCheck, sbx, tmux, claude, gh] = await Promise.all([
+    checkOs(),
+    checkSbx(brew),
+    checkTmux(brew),
+    checkClaude(),
+    // Gitea/Forgejo projects don't need the GitHub CLI.
+    gitea ? checkGiteaToken(gitea) : checkGh(brew),
+  ]);
   const sbxOk = sbx.status === "ok";
-  const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), checkGithubSecret(sbxOk)]);
+  const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), gitea ? checkGiteaAccess(gitea, sbxOk) : checkGithubSecret(sbxOk)]);
   const policy = await checkSbxPolicy(login.status === "ok");
-  const checks: SetupCheck[] = [osCheck, sbx, login, policy, secret, tmux, claude, gh, checkRemote(repo)];
+  const checks: SetupCheck[] = [osCheck, sbx, login, policy, secret, tmux, claude, gh, gitea ? checkGiteaRemote(gitea) : checkRemote(repo)];
   const codexAgents = team.filter((a) => a.cli === "codex");
   if (codexAgents.some((a) => a.mode === "sandbox")) checks.splice(5, 0, await checkOpenAiSecret(sbxOk));
   if (codexAgents.some((a) => a.mode === "local")) checks.push(await checkCodex());
@@ -209,6 +261,7 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): 
   return {
     machine: { cpus: cpus().length, memoryGb: Math.round(totalmem() / 1024 ** 3), persistentAgents: usesTmux() },
     checks,
+    provider,
     sandboxReady: osCheck.status !== "unsupported" && ok(sbx) && ok(login) && ok(policy) && ok(tmux),
     localReady: ok(tmux) && ok(claude),
     checkedAt: new Date().toISOString(),

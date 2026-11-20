@@ -3,18 +3,19 @@ import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../.
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
 
-const REVIEW_HINT: Record<ReviewTool, string> = {
+const REVIEW_HINT = (host: string): Record<ReviewTool, string> => ({
   coderabbit: "Reads CodeRabbit's check and comments on each PR.",
   greptile: "Reads Greptile's review status and comments.",
-  copilot: "Reads GitHub Copilot code review results.",
-  human: "A person reviews. HQ waits for an approving GitHub review.",
+  copilot: "Reads GitHub Copilot code review results (GitHub only).",
+  human: `A person reviews. HQ waits for an approving ${host} review.`,
   custom: "Runs your command; exit code 0 = passed, anything else = changes.",
-};
+});
 
 export function WorkflowSettings() {
   const wf = useOffice((s) => s.snap?.config.workflow);
   // Deploy isn't built in real HQ yet (only the demo shows environments), so it's shown as coming soon.
   const live = useOffice((s) => s.live);
+  const host = useOffice((s) => s.snap?.setup.provider?.name ?? "GitHub");
   if (!wf) return null;
   const stage = (name: string, on: boolean, detail: string) => (
     <span className={`border-[3px] border-ink px-2 py-0.5 ${on ? "bg-white" : "bg-cream-2 text-muted line-through"}`}>
@@ -50,7 +51,7 @@ export function WorkflowSettings() {
           <Toggle checked={wf.review.enabled} onChange={(v) => officeActions.updateWorkflow({ review: { enabled: v } })} label={wf.review.enabled ? "On" : "Off"} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Tool" hint={REVIEW_HINT[wf.review.tool]}>
+          <Field label="Tool" hint={REVIEW_HINT(host)[wf.review.tool]}>
             <select
               className="field"
               disabled={!wf.review.enabled}

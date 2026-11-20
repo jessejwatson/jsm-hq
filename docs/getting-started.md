@@ -6,7 +6,7 @@ This guide takes you from a fresh machine to a team of AI agents working on your
 
 - A Mac (Apple silicon, macOS 14+), Linux (Ubuntu 24.04+), or a Windows 11 PC.
 - A [Docker](https://app.docker.com/signup) account (free) for Docker Sandboxes.
-- A [GitHub](https://github.com/signup) account and a repo for your project.
+- A [GitHub](https://github.com/signup) account and a repo for your project. (Using Gitea or Forgejo instead? See [Gitea and Forgejo](how-it-works.md#gitea-and-forgejo): you need a token instead of `gh`, and steps 1 and 4 change.)
 - A Claude (Pro, Max or API) or ChatGPT account for the agents themselves.
 
 HQ checks everything below when it starts and shows a **setup checklist** with the exact command for anything missing, so you can also skip ahead to [step 6](#6-run-hq) and follow the checklist.
@@ -86,7 +86,7 @@ Claude Code agents ask you to sign in the first time they start. Do it in the ag
 
 ## 5. Prepare a GitHub repo
 
-HQ works on a git repo that has a GitHub remote called `origin`. Each agent clones it, works on its own branch, and opens pull requests there. HQ follows those PRs and their reviews.
+HQ works on a git repo that has a GitHub, Gitea or Forgejo remote called `origin`. Each agent clones it, works on its own branch, and opens pull requests there. HQ follows those PRs and their reviews.
 
 **An existing project** that's already on GitHub: nothing to do. Just open a terminal in its folder.
 
@@ -131,13 +131,43 @@ To give agents MCP servers (Supabase, Stripe, your own…), use **Settings → M
 
 When an agent needs a website its sandbox blocks (a tool's docs, an API), it asks instead of guessing: its drawer shows the domain and why, with **Allow for this agent / Allow for everyone / Deny**. To allow your stack's docs up front, use **Settings → Stack → Network access**.
 
+## Use from another device
+
+By default HQ listens on `127.0.0.1`, so only a browser on the same machine can open it. To open the console from a phone or another computer, start HQ with `--host`:
+
+```bash
+npx @therealjsmastery/jsm-hq@latest --host 0.0.0.0
+```
+
+HQ prints "JSM HQ is running →" followed by a link with this machine's network address and your token; open that link on the other device. If the machine has several addresses, the others are listed below it. A `Listening on <address>:<port>` line always shows what HQ is bound to. On a machine with a desktop, HQ still opens its own tab on the `127.0.0.1` link; on a headless server it doesn't try to open a browser.
+
+| Flag | What it does |
+| --- | --- |
+| `--host <addr>` (or `HQ_HOST`) | Address to listen on. `0.0.0.0` = every IPv4 interface, `::` = every interface (IPv4 and IPv6); or one IP of this machine (for example a Tailscale address) to listen there only. Default `127.0.0.1`. |
+| `--allow-origin <origin>` | Also accept a page opened from this exact origin, for a reverse proxy or a custom name, e.g. `--allow-origin https://hq.example.com`. Repeat it for several. |
+
+HQ already accepts this machine's own addresses, its hostname and `hostname.local`.
+
+**Read this first.** The console includes the agents' terminals, so anyone who can open it can run commands as you.
+
+- The link's token is the only password. Anyone on the network who has the link can control your agents and their terminals. The token changes every time HQ starts; don't paste the link into chats or screenshots.
+- With `--host`, traffic is plain `http`: the token and everything typed in or shown in a terminal can be read by anyone on the path.
+- HQ checks the token and the page's origin on every connection, but neither protects an unencrypted network. Use one of:
+  - a network you trust (your home Wi-Fi, not a café or office guest network);
+  - a VPN such as [Tailscale](https://tailscale.com): `--host <your Tailscale IP>` (shown by `tailscale ip -4`) listens only on the tailnet;
+  - an SSH tunnel, which needs no `--host` at all: on the other device run `ssh -L 7420:127.0.0.1:7420 you@this-machine`, then open the `http://127.0.0.1:7420/?token=…` link there;
+  - an HTTPS reverse proxy in front of HQ (keep HQ on `127.0.0.1`) with `--allow-origin https://your.name`. Make sure the proxy forwards WebSocket upgrades and doesn't log query strings, since the token travels in the `/ws` URL.
+- Your firewall must allow the port (`7420` unless you used `--port`).
+- With `--dev`, the page comes from Vite, not HQ. Use `pnpm dev:hq:host`, which starts both on the network, and open it by IP address.
+
 ## Something not working?
 
 | Problem | Fix |
 |---|---|
 | Start fails with "network policy has not been initialized" | Step 3: `sbx policy init balanced`. |
 | Start fails with a Docker sign-in error | Your sign-in expired: `sbx login`, then **Check again**. |
-| Agents can't push or open PRs | Step 4 (`sbx secret set github …`), and check the repo has a GitHub `origin` (step 5). |
+| Agents can't push or open PRs | Step 4 (`sbx secret set github …`), and check the repo has a GitHub `origin` (step 5). On Gitea or Forgejo: allow the host and add `GITEA_TOKEN` to the agent's App variables, as in [Gitea and Forgejo](how-it-works.md#gitea-and-forgejo). |
+| The checklist says "not GitHub" for a Gitea or Forgejo server | HQ couldn't reach `<host>/api/v1/version`. Set **Git host** and the server address in Settings → Project. |
 | A Codex agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. HQ never answers trust prompts for you. |
 | "Port 7420 is in use" | Another HQ is running. Stop it or use `--port 7421`. |
 | Windows: `listen EACCES` | Windows reserved that port. Use `--port 8420`. |

@@ -3,12 +3,19 @@
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { run } from "./lib/exec";
+import type { Provider } from "./provider";
+import { isGithubHost, parseRemote, repoPath } from "./remote";
 
 export interface RepoInfo {
   root: string;
   name: string;
   originUrl: string | null;
-  github: string | null; // "owner/name" when origin is GitHub
+  github: string | null; // "owner/name" when origin is on github.com
+  slug: string | null; // "owner/name" of origin on any host
+  /** Where PRs live. Filled by main (needs the saved project settings), re-resolved when they change. */
+  provider: Provider | null;
+  /** Why `provider` is null. */
+  providerReason: string | null;
   hasCodeRabbit: boolean;
   hasInsta: boolean;
 }
@@ -19,12 +26,15 @@ export async function detectRepo(start: string): Promise<RepoInfo> {
   const root = top.stdout.trim();
   const origin = await run("git", ["remote", "get-url", "origin"], { cwd: root });
   const originUrl = origin.ok ? origin.stdout.trim() : null;
-  const m = originUrl?.match(/github\.com[:/]([^/]+\/[^/]+?)(\.git)?$/);
+  const remote = parseRemote(originUrl);
   return {
     root,
     name: basename(root),
     originUrl,
-    github: m ? m[1] : null,
+    github: remote && isGithubHost(remote.host) ? repoPath(remote) : null,
+    slug: remote ? repoPath(remote) : null,
+    provider: null,
+    providerReason: null,
     hasCodeRabbit: existsSync(join(root, ".coderabbit.yaml")) || existsSync(join(root, ".coderabbit.yml")),
     hasInsta: existsSync(join(root, ".insta")),
   };

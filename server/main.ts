@@ -20,6 +20,7 @@ import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { ensurePtyHelperExecutable } from "./lib/ptyFix";
 import { agentToken, browserToken } from "./paths";
+import { refreshProvider } from "./detect";
 import { detectRepo } from "./repo";
 import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
@@ -42,7 +43,9 @@ async function main() {
   const token = agentToken(slug);
   const uiToken = browserToken(slug, dev);
 
-  log.info(`repo   ${repo.root}${repo.github ? `  (github.com/${repo.github})` : ""}`);
+  await refreshProvider(repo, config.project);
+  const where = repo.provider ? `  (${repo.provider.info.baseUrl ?? repo.provider.info.host}/${repo.provider.info.repo}, ${repo.provider.info.name})` : "";
+  log.info(`repo   ${repo.root}${where}`);
   log.info("checking setup…");
   const setup = await runSetupChecks(repo, config.team);
   for (const c of setup.checks) log.info(`  ${c.status === "ok" ? "✓" : c.status === "warning" ? "!" : "✗"} ${c.label}: ${c.detail}`);
@@ -94,7 +97,7 @@ async function main() {
   });
   sessions.startPolling();
   sbx.startApprovalPolling();
-  const github = new GitHubSync(hub, planner, repo.github);
+  const github = new GitHubSync(hub, planner);
   github.start();
 
   const url = `${uiOrigin}/?token=${uiToken}`;

@@ -14,7 +14,9 @@ import type { Sbx } from "./sbx";
 import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
 import { newAgent } from "./store";
+import { refreshProvider } from "./detect";
 import { mergeByNotice } from "./githubSync";
+import { normalizeBaseUrl } from "./remote";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
 function cleanStack(raw: unknown): StackConfig | null {
@@ -292,7 +294,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const lead = hub.snap.config.team.find((a) => a.isLead);
       if (lead && wf.merge.by !== mergeBy) {
         const waiting = hub.snap.pullRequests.filter((pr) => pr.review === "passed" && !pr.merged && !pr.closed).map((pr) => pr.number);
-        planner.notify(lead.id, mergeByNotice(wf.merge.by, waiting));
+        planner.notify(lead.id, mergeByNotice(wf.merge.by, waiting, hub.repo.provider?.mergeCommand));
       }
     },
 
@@ -301,6 +303,20 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const project = hub.snap.config.project;
       if (typeof p.name === "string" && p.name.trim()) project.name = str(p.name, 80);
       if (typeof p.repo === "string" && p.repo.trim()) project.repo = str(p.repo, 200);
+      let providerChanged = false;
+      if (p.provider === "auto" || p.provider === "github" || p.provider === "gitea") {
+        providerChanged ||= (project.provider ?? "auto") !== p.provider;
+        if (p.provider === "auto") delete project.provider;
+        else project.provider = p.provider;
+      }
+      if (typeof p.baseUrl === "string") {
+        const base = p.baseUrl.trim() ? normalizeBaseUrl(p.baseUrl) : "";
+        if (base !== null && (project.baseUrl ?? "") !== base) {
+          providerChanged = true;
+          if (base) project.baseUrl = base;
+          else delete project.baseUrl;
+        }
+      }
       if (typeof p.officeName === "string") {
         const name = p.officeName.trim().slice(0, OFFICE_NAME_MAX);
         if (name) project.officeName = name;
@@ -309,6 +325,14 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       hub.configChanged();
+      if (providerChanged)
+        // Probe the host, rebuild the provider, then tell the sync loop (config.updated) and re-run the checklist.
+        void refreshProvider(hub.repo, project)
+          .then(() => {
+            hub.configChanged();
+            return sessions.recheckSetup();
+          })
+          .catch(() => {});
       if (exportOn) {
         hub.planChanged();
         hub.activity("config", null, "Plan export on: HQ writes docs/plan.md whenever the plan changes.");

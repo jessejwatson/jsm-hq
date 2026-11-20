@@ -9,6 +9,7 @@ export function PrDrawer() {
   const now = useNow(5000);
   if (!snap) return null;
   const wf = snap.config.workflow;
+  const host = snap.setup.provider?.name ?? "GitHub";
   const open = snap.pullRequests.filter((p) => !p.merged && !p.closed).sort((a, b) => b.number - a.number);
   const merged = snap.pullRequests.filter((p) => p.merged).sort((a, b) => b.number - a.number).slice(0, 15);
 
@@ -33,11 +34,11 @@ export function PrDrawer() {
           <ReviewChip review={pr.review} merged={pr.merged} />
           {pr.url ? (
             <a className="btn px-1.5 text-[11px]" href={pr.url} target="_blank" rel="noreferrer">
-              Open on GitHub ↗
+              Open on {host} ↗
             </a>
           ) : (
-            <button className="btn px-1.5 text-[11px]" disabled title="Demo data has no GitHub link">
-              Open on GitHub
+            <button className="btn px-1.5 text-[11px]" disabled title={`Demo data has no ${host} link`}>
+              Open on {host}
             </button>
           )}
         </div>

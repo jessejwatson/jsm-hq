@@ -1,4 +1,4 @@
-// 127.0.0.1 only. Routes:
+// Listens on 127.0.0.1 unless --host says otherwise. Routes:
 //   GET  /ws?token=…            browser WebSocket (browser token)
 //   POST /hook/<agent>/<event>  Claude Code hooks (agent token)
 //   GET  /api/health
@@ -47,6 +47,7 @@ interface Options {
   inbox: Inbox;
   planner: Planner;
   port: number;
+  host: string;
   browserToken: string;
   agentToken: string;
   distDir: string | null;
@@ -137,6 +138,6 @@ export function startHttp(o: Options) {
 
   return new Promise<typeof server>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(o.port, "127.0.0.1", () => resolve(server));
+    server.listen(o.port, o.host, () => resolve(server));
   });
 }

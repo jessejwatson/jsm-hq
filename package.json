@@ -49,6 +49,7 @@
   "scripts": {
     "dev": "vite",
     "dev:hq": "concurrently -k -n hq,ui -c magenta,cyan \"tsx watch server/main.ts --dev\" \"vite\"",
+    "dev:hq:host": "concurrently -k -n hq,ui -c magenta,cyan \"tsx watch server/main.ts --dev --host 0.0.0.0\" \"vite --host 0.0.0.0\"",
     "hq": "vite build --logLevel warn && tsx server/main.ts",
     "test": "tsx --test server/*.test.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",

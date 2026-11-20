@@ -109,7 +109,7 @@ test("fetchGiteaPrs: token header, open + merged + closed split, reviews and sta
     },
     calls,
   );
-  const page = await fetchGiteaPrs(new GiteaClient("https://git.example.com", () => "s3cret", f), "acme/app");
+  const page = await fetchGiteaPrs(new GiteaClient("https://git.example.com", () => "s3cret", f), "acme/app", 0);
   assert.equal(page.open.length, 1);
   assert.equal(page.open[0].reviewDecision, "CHANGES_REQUESTED");
   assert.equal(page.open[0].reviewThreads.nodes.length, 1);
@@ -118,6 +118,21 @@ test("fetchGiteaPrs: token header, open + merged + closed split, reviews and sta
   assert.deepEqual(page.closed, [6]);
   assert.equal(page.rate, null);
   assert.ok(calls.every((c) => c.auth === "token s3cret"));
+});
+
+test("a transient mergeable=false is not reported as a conflict", async () => {
+  let answers = [true];
+  const routes = (listedMergeable: boolean) => ({
+    "/repos/acme/app/pulls?state=open": () => json([pull({ mergeable: listedMergeable })]),
+    "/repos/acme/app/pulls?state=closed": () => json([]),
+    "/repos/acme/app/pulls/7/reviews": () => json([]),
+    "/repos/acme/app/commits/abc/status": () => json({ statuses: [] }),
+    "/repos/acme/app/pulls/7": () => json(pull({ mergeable: answers[0] })),
+  });
+  const run = async () => (await fetchGiteaPrs(new GiteaClient("https://git.example.com", () => null, fakeFetch(routes(false))), "acme/app", 0)).open[0].mergeable;
+  assert.equal(await run(), "MERGEABLE"); // Gitea finished checking: it was fine
+  answers = [false];
+  assert.equal(await run(), "CONFLICTING"); // still false after the wait: a real conflict
 });
 
 test("errors: 401/403/404 are readable, 429 pauses the sync", async () => {
@@ -135,7 +150,7 @@ test("a rate limit on a per-PR call still pauses the sync", async () => {
     "/repos/acme/app/pulls?state=closed": () => json([]),
     "/repos/acme/app/pulls/7/reviews": () => json({}, 429),
   });
-  await assert.rejects(fetchGiteaPrs(new GiteaClient("https://git.example.com", () => null, f), "acme/app"), RateLimited);
+  await assert.rejects(fetchGiteaPrs(new GiteaClient("https://git.example.com", () => null, f), "acme/app", 0), RateLimited);
 });
 
 test("an unreachable server says so", async () => {

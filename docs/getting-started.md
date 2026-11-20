@@ -6,7 +6,7 @@ This guide takes you from a fresh machine to a team of AI agents working on your
 
 - A Mac (Apple silicon, macOS 14+), Linux (Ubuntu 24.04+), or a Windows 11 PC.
 - A [Docker](https://app.docker.com/signup) account (free) for Docker Sandboxes.
-- A [GitHub](https://github.com/signup) account and a repo for your project.
+- A [GitHub](https://github.com/signup) account and a repo for your project. (Using Gitea or Forgejo instead? See [Gitea and Forgejo](how-it-works.md#gitea-and-forgejo): you need a token instead of `gh`, and steps 1 and 4 change.)
 - A Claude (Pro, Max or API) or ChatGPT account for the agents themselves.
 
 HQ checks everything below when it starts and shows a **setup checklist** with the exact command for anything missing, so you can also skip ahead to [step 6](#6-run-hq) and follow the checklist.
@@ -86,7 +86,7 @@ Claude Code agents ask you to sign in the first time they start. Do it in the ag
 
 ## 5. Prepare a GitHub repo
 
-HQ works on a git repo that has a GitHub remote called `origin`. Each agent clones it, works on its own branch, and opens pull requests there. HQ follows those PRs and their reviews.
+HQ works on a git repo that has a GitHub, Gitea or Forgejo remote called `origin`. Each agent clones it, works on its own branch, and opens pull requests there. HQ follows those PRs and their reviews.
 
 **An existing project** that's already on GitHub: nothing to do. Just open a terminal in its folder.
 
@@ -137,7 +137,8 @@ When an agent needs a website its sandbox blocks (a tool's docs, an API), it ask
 |---|---|
 | Start fails with "network policy has not been initialized" | Step 3: `sbx policy init balanced`. |
 | Start fails with a Docker sign-in error | Your sign-in expired: `sbx login`, then **Check again**. |
-| Agents can't push or open PRs | Step 4 (`sbx secret set github …`), and check the repo has a GitHub `origin` (step 5). |
+| Agents can't push or open PRs | Step 4 (`sbx secret set github …`), and check the repo has a GitHub `origin` (step 5). On Gitea or Forgejo: allow the host and add `GITEA_TOKEN` to the agent's App variables, as in [Gitea and Forgejo](how-it-works.md#gitea-and-forgejo). |
+| The checklist says "not GitHub" for a Gitea or Forgejo server | HQ couldn't reach `<host>/api/v1/version`. Set **Git host** and the server address in Settings → Project. |
 | A Codex agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. HQ never answers trust prompts for you. |
 | "Port 7420 is in use" | Another HQ is running. Stop it or use `--port 7421`. |
 | Windows: `listen EACCES` | Windows reserved that port. Use `--port 8420`. |

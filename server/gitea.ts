@@ -174,12 +174,24 @@ async function inChunks<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<
   return out;
 }
 
-export async function fetchGiteaPrs(client: GiteaClient, repo: string): Promise<PrPage> {
+/**
+ * Gitea reports `mergeable: false` while it is still checking a new or updated PR, not only for real conflicts.
+ * Look again after a short wait and believe a PR is conflicting only if it still says so.
+ */
+async function settleMergeable(client: GiteaClient, r: string, pr: GtPull, settleMs: number): Promise<GtPull> {
+  if (pr.mergeable !== false) return pr;
+  if (settleMs > 0) await new Promise((res) => setTimeout(res, settleMs));
+  const again = await client.get<GtPull>(`${r}/pulls/${pr.number}`).catch((e) => rethrowLimit(e, pr));
+  return { ...pr, mergeable: again.mergeable };
+}
+
+export async function fetchGiteaPrs(client: GiteaClient, repo: string, settleMs = 2000): Promise<PrPage> {
   const r = `/repos/${repo.split("/").map(encodeURIComponent).join("/")}`;
   const list = (state: string, limit: number) => client.get<GtPull[]>(`${r}/pulls?state=${state}&sort=recentupdate&limit=${limit}&page=1`);
   const [openPulls, closedPulls] = await Promise.all([list("open", OPEN_LIMIT), list("closed", 20)]);
 
-  const open = await inChunks(openPulls, async (pr) => {
+  const open = await inChunks(openPulls, async (listed) => {
+    const pr = await settleMergeable(client, r, listed, settleMs);
     const reviews = await client.get<GtReview[]>(`${r}/pulls/${pr.number}/reviews`).catch((e) => rethrowLimit(e, [] as GtReview[]));
     const withComments = reviews.filter((rv) => (rv.comments_count ?? 0) > 0 && rv.state !== "PENDING");
     const [comments, status] = await Promise.all([

@@ -131,6 +131,35 @@ To give agents MCP servers (Supabase, Stripe, your own…), use **Settings → M
 
 When an agent needs a website its sandbox blocks (a tool's docs, an API), it asks instead of guessing: its drawer shows the domain and why, with **Allow for this agent / Allow for everyone / Deny**. To allow your stack's docs up front, use **Settings → Stack → Network access**.
 
+## Use from another device
+
+By default HQ listens on `127.0.0.1`, so only a browser on the same machine can open it. To open the console from a phone or another computer, start HQ with `--host`:
+
+```bash
+npx @therealjsmastery/jsm-hq@latest --host 0.0.0.0
+```
+
+HQ prints a link with this machine's network address and your token; open that link on the other device. Your own browser still opens the `127.0.0.1` link.
+
+| Flag | What it does |
+| --- | --- |
+| `--host <addr>` (or `HQ_HOST`) | Address to listen on. `0.0.0.0` or `::` = every network interface; or one IP of this machine (for example a Tailscale address) to listen there only. Default `127.0.0.1`. |
+| `--allow-origin <origin>` | Also accept a page opened from this exact origin, for a reverse proxy or a custom name, e.g. `--allow-origin https://hq.example.com`. Repeat it for several. |
+
+HQ already accepts this machine's own addresses, its hostname and `hostname.local`.
+
+**Read this first.** The console includes the agents' terminals, so anyone who can open it can run commands as you.
+
+- The link's token is the only password. Anyone on the network who has the link can control your agents and their terminals. The token changes every time HQ starts; don't paste the link into chats or screenshots.
+- With `--host`, traffic is plain `http`: the token and everything typed in or shown in a terminal can be read by anyone on the path.
+- HQ checks the token and the page's origin on every connection, but neither protects an unencrypted network. Use one of:
+  - a network you trust (your home Wi-Fi, not a café or office guest network);
+  - a VPN such as [Tailscale](https://tailscale.com): `--host <your Tailscale IP>` (shown by `tailscale ip -4`) listens only on the tailnet;
+  - an SSH tunnel, which needs no `--host` at all: on the other device run `ssh -L 7420:127.0.0.1:7420 you@this-machine`, then open the `http://127.0.0.1:7420/?token=…` link there;
+  - an HTTPS reverse proxy in front of HQ (keep HQ on `127.0.0.1`) with `--allow-origin https://your.name`. Make sure the proxy forwards WebSocket upgrades and doesn't log query strings, since the token travels in the `/ws` URL.
+- Your firewall must allow the port (`7420` unless you used `--port`).
+- With `--dev`, the page comes from Vite, not HQ. Use `pnpm dev:hq:host`, which starts both on the network, and open it by IP address.
+
 ## Something not working?
 
 | Problem | Fix |

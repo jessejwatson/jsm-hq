@@ -85,6 +85,18 @@ Click any agent to open its drawer: its live terminal, a shell inside its sandbo
 
 More detail on workspaces, sandboxes, MCP servers, app variables and what HQ saves: **[How it works](docs/how-it-works.md)**.
 
+## Use from another device
+
+By default HQ only listens on `127.0.0.1`. To open the console from a phone or another computer:
+
+```bash
+npx @therealjsmastery/jsm-hq@latest --host 0.0.0.0     # or: HQ_HOST=0.0.0.0
+```
+
+HQ prints a link with this machine's network address and your token. `--allow-origin https://hq.example.com` (repeatable) adds a custom name, e.g. for a reverse proxy.
+
+**The console includes terminals, so this is remote shell access.** Anyone with the link can control your agents, and `--host` serves plain `http`: the token and terminal traffic are unencrypted. Use a trusted network, a VPN such as Tailscale (`--host <tailscale ip>`), an SSH tunnel (`ssh -L 7420:127.0.0.1:7420 you@this-machine`, no `--host` needed), or an HTTPS reverse proxy. Details: [Getting started](docs/getting-started.md#use-from-another-device).
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -97,6 +109,7 @@ More detail on workspaces, sandboxes, MCP servers, app variables and what HQ sav
 | A CLI sign-in in a sandbox opens the browser, then fails on `localhost:<port>` | Press **Forward port** in the agent's drawer, then reload the page. |
 | An agent's state never changes | The sandbox can't reach HQ. `sbx policy ls` should show `localhost:<port>` and `host.docker.internal:<port>` allowed; HQ adds them on start. |
 | "Port 7420 is in use" | Another HQ is running. Stop it, or use `--port 7421`. |
+| Another device can't open the console | Start HQ with `--host 0.0.0.0` and allow the port in your firewall. See [Use from another device](#use-from-another-device). |
 | Windows: `listen EACCES` on start | Windows reserved that port. Use `--port 8420`. |
 | `posix_spawnp failed` when opening a terminal | Run `npx clear-npx-cache`, then `npx @therealjsmastery/jsm-hq@latest`. |
 

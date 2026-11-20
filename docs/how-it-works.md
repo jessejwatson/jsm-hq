@@ -63,10 +63,10 @@ HQ also works with [Gitea](https://about.gitea.com) and [Forgejo](https://forgej
 **Token.** HQ reads PRs with an access token, not `gh`.
 
 1. In Gitea or Forgejo open **Settings → Applications → Generate New Token**.
-2. Give it read access to **repository** and **issue** (pull requests). Agents that open PRs and push also need write access to repository and issue; use a separate token for them if you prefer.
+2. Give it **read** access to **repository** (that covers pull requests and reviews). Agents that push and open PRs need **write** access to repository; you can use a separate token for them.
 3. Start HQ with the token in its environment: `GITEA_TOKEN=<token> npx @therealjsmastery/jsm-hq@latest` (`FORGEJO_TOKEN` works too).
 
-The setup checklist shows **Gitea token** (or **Forgejo token**) and checks it against `/api/v1/user`. The token is sent as `Authorization: token <token>` and never leaves HQ's process.
+The setup checklist shows **Gitea token** (or **Forgejo token**) and checks that it can read your repo. The token is sent as `Authorization: token <token>` and never leaves HQ's process.
 
 **Sandboxes.** Agents run in sandboxes that block unknown hosts. The checklist's **Gitea access inside sandboxes** row shows whether the host is allowed; if not, run `sbx policy allow network <host>`. Agents need the token too: add `GITEA_TOKEN` to their App variables (Settings → Sandbox) and restart them. Agents have no `gh` here: their instructions tell them to push with git and open and merge PRs through the Gitea API (or `tea`, if installed).
 

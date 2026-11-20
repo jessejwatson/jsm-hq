@@ -181,13 +181,13 @@ async function checkGithubSecret(sbxOk: boolean): Promise<Check> {
 
 const tokenFix = (p: ProviderInfo) => fix(`export ${GITEA_TOKEN_ENV[0]}=<your token>   # then restart HQ`, false, `${p.baseUrl}/user/settings/applications`);
 
-/** The token HQ itself uses to read PRs (the GITEA_TOKEN variable in HQ's environment). Checked with GET /user. */
+/** The token HQ itself uses to read PRs (the GITEA_TOKEN variable in HQ's environment). Checked against the repo itself, so a token scoped to repositories only still passes. */
 export async function checkGiteaToken(p: ProviderInfo, token = giteaToken(), client = new GiteaClient(p.baseUrl ?? "", () => token)): Promise<Check> {
   const base = { id: "gitea-token" as const, label: `${p.name} token (reads PRs and reviews)`, neededFor: "github" as const };
   if (!token) return { ...base, status: "missing", detail: `${GITEA_TOKEN_ENV[0]} isn't set in the environment HQ runs in. Create a token with read access to repositories and pull requests.`, fix: tokenFix(p) };
   try {
-    const me = await client.get<{ login?: string }>("/user");
-    return { ...base, status: "ok", detail: `Signed in as ${me.login ?? "you"} on ${p.host}`, fix: null };
+    await client.get(`/repos/${p.repo}`);
+    return { ...base, status: "ok", detail: `Can read ${p.repo} on ${p.host}`, fix: null };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // A rejected token is fixable by the user; an unreachable server is only a warning.

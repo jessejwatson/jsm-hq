@@ -139,11 +139,11 @@ By default HQ listens on `127.0.0.1`, so only a browser on the same machine can 
 npx @therealjsmastery/jsm-hq@latest --host 0.0.0.0
 ```
 
-HQ prints a link with this machine's network address and your token; open that link on the other device. Your own browser still opens the `127.0.0.1` link.
+HQ prints "JSM HQ is running →" followed by a link with this machine's network address and your token; open that link on the other device. If the machine has several addresses, the others are listed below it. A `Listening on <address>:<port>` line always shows what HQ is bound to. On a machine with a desktop, HQ still opens its own tab on the `127.0.0.1` link; on a headless server it doesn't try to open a browser.
 
 | Flag | What it does |
 | --- | --- |
-| `--host <addr>` (or `HQ_HOST`) | Address to listen on. `0.0.0.0` or `::` = every network interface; or one IP of this machine (for example a Tailscale address) to listen there only. Default `127.0.0.1`. |
+| `--host <addr>` (or `HQ_HOST`) | Address to listen on. `0.0.0.0` = every IPv4 interface, `::` = every interface (IPv4 and IPv6); or one IP of this machine (for example a Tailscale address) to listen there only. Default `127.0.0.1`. |
 | `--allow-origin <origin>` | Also accept a page opened from this exact origin, for a reverse proxy or a custom name, e.g. `--allow-origin https://hq.example.com`. Repeat it for several. |
 
 HQ already accepts this machine's own addresses, its hostname and `hostname.local`.

@@ -97,7 +97,7 @@ export function buildAllowedOrigins(i: OriginInput): string[] {
 
   if (!isWildcard(i.host)) add(urlHost(i.host)); // the explicit host (also covers a non-default loopback like ::1)
   if (isExposed(i.host)) {
-    if (isWildcard(i.host)) lanAddresses(i.interfaces).forEach((a) => add(urlHost(a)));
+    if (isWildcard(i.host)) reachableAddresses(i.host, i.interfaces).forEach((a) => add(urlHost(a)));
     const name = i.hostname.trim().toLowerCase();
     if (name && !isIP(name)) {
       add(name);
@@ -106,4 +106,74 @@ export function buildAllowedOrigins(i: OriginInput): string[] {
   }
   for (const o of i.extra ?? []) origins.add(o);
   return [...origins];
+}
+
+/** Addresses another device can use to reach HQ: every LAN address for a wildcard bind, the bound IP for a specific one, none for loopback. */
+export function reachableAddresses(host: string, ifaces: Interfaces): string[] {
+  // 0.0.0.0 listens on IPv4 only; :: is dual-stack, so IPv4 and IPv6 both reach it.
+  if (isWildcard(host)) return host === "0.0.0.0" ? lanAddresses(ifaces).filter((a) => isIP(a) === 4) : lanAddresses(ifaces);
+  return isLoopback(host) ? [] : [host];
+}
+
+export interface StartupInput {
+  host: string;
+  port: number;
+  /** Vite's port: with --dev the page is served there. */
+  uiPort: number;
+  dev: boolean;
+  token: string;
+  interfaces: Interfaces;
+  /** Where the host came from, when the user gave one ("--host" or "HQ_HOST"). */
+  hostSource: "--host" | "HQ_HOST" | null;
+}
+
+export interface Startup {
+  /** The "running" block: the URL to open, where HQ listens, other candidate URLs. */
+  info: string;
+  /** Network exposure warning; null when HQ is loopback only. */
+  warn: string | null;
+  /** URL HQ's own browser tab opens (never a LAN URL unless that is the only address HQ listens on). */
+  localUrl: string;
+}
+
+/** What HQ prints when it is up. The headline is the URL that works from where you are most likely reading it. */
+export function describeStartup(i: StartupInput): Startup {
+  const web = i.dev ? i.uiPort : i.port; // the port the page is served on
+  const query = `/?token=${i.token}`;
+  const localHost = urlHost(localAddress(i.host));
+  const localUrl = i.dev ? `http://localhost:${i.uiPort}${query}` : `http://${localHost}:${i.port}${query}`;
+  const listening = `Listening on ${urlHost(i.host)}:${i.port}`;
+
+  if (!isExposed(i.host)) {
+    const lines = [`JSM HQ is running → ${localUrl}`, listening];
+    if (i.hostSource) lines.push(`${i.hostSource} ${i.host} is a loopback address, so HQ is only reachable from this machine. Use --host 0.0.0.0 to reach it from other devices.`);
+    return { info: `\n\n  ${lines.join("\n  ")}\n`, warn: null, localUrl };
+  }
+
+  const urls = reachableAddresses(i.host, i.interfaces).map((a) => `http://${urlHost(a)}:${web}${query}`);
+  const lines: string[] = [];
+  if (urls.length) {
+    lines.push(`JSM HQ is running → ${urls[0]}`, listening);
+    if (urls.length > 1) lines.push("Other addresses of this machine:", ...urls.slice(1).map((u) => `  ${u}`));
+    // Loopback is only listening for a wildcard bind.
+    if (isWildcard(i.host)) lines.push(`(also on this machine: ${localUrl})`);
+  } else {
+    lines.push(`JSM HQ is running → ${localUrl}`, listening, "No network address was found for this machine; open http://<this machine's address>:" + `${web}/?token=… from the other device.`);
+  }
+
+  const warn = [
+    `HQ is reachable from your network (${urlHost(i.host)}:${i.port}).`,
+    "  • Anyone on the network who has a URL with the token can control your agents and their terminals (a remote shell).",
+    "  • It is plain http: the token and all terminal input and output are unencrypted on the wire.",
+    "  • Use a network you trust, a VPN such as Tailscale, an ssh tunnel (ssh -L), or an HTTPS reverse proxy (then add --allow-origin https://your.name).",
+    i.dev ? "  • --dev: that page is served by Vite, which must also listen on the network: start it with `vite --host` (pnpm dev:hq:host does both). Use an IP address, not a name." : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { info: `\n\n  ${lines.join("\n  ")}\n`, warn, localUrl };
+}
+
+/** Whether a desktop browser can be opened from here. A headless Linux box has none, so don't try (and don't print errors). */
+export function canOpenBrowser(platform: string, env: NodeJS.ProcessEnv): boolean {
+  return platform !== "linux" || !!(env.DISPLAY || env.WAYLAND_DISPLAY);
 }

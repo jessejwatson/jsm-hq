@@ -22,7 +22,7 @@ import { ensurePtyHelperExecutable } from "./lib/ptyFix";
 import { agentToken, browserToken } from "./paths";
 import { hostname, networkInterfaces } from "node:os";
 import { refreshProvider } from "./detect";
-import { buildAllowedOrigins, DEFAULT_HOST, isExposed, lanAddress, localAddress, parseHost, parseOrigin, urlHost } from "./host";
+import { buildAllowedOrigins, canOpenBrowser, DEFAULT_HOST, describeStartup, isExposed, parseHost, parseOrigin } from "./host";
 import { detectRepo } from "./repo";
 import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
@@ -41,7 +41,7 @@ function argAll(name: string): string[] {
 }
 
 /** Where HQ listens. Read once, up front, so a bad value stops HQ with a clear message and errors can name the host. */
-function listenSettings(): { port: number; host: string; extraOrigins: string[] } {
+function listenSettings(): { port: number; host: string; extraOrigins: string[]; hostSource: "--host" | "HQ_HOST" | null } {
   const bad = (msg: string): never => {
     log.error(msg);
     process.exit(1);
@@ -53,14 +53,15 @@ function listenSettings(): { port: number; host: string; extraOrigins: string[] 
     const r = parseOrigin(o);
     return r.ok ? r.origin : bad(r.error);
   });
-  return { port: Number(arg("port") ?? process.env.HQ_PORT ?? 7420), host: parsed.host, extraOrigins };
+  const hostSource = arg("host") !== undefined ? "--host" : process.env.HQ_HOST !== undefined ? "HQ_HOST" : null;
+  return { port: Number(arg("port") ?? process.env.HQ_PORT ?? 7420), host: parsed.host, extraOrigins, hostSource };
 }
 const settings = listenSettings();
 
 async function main() {
   ensurePtyHelperExecutable();
   const dev = flag("dev");
-  const { port, host, extraOrigins } = settings;
+  const { port, host, extraOrigins, hostSource } = settings;
   const repo = await detectRepo(resolve(arg("repo") ?? process.env.HQ_REPO ?? process.cwd()));
   const { config, isNew } = loadConfig(repo, port);
   config.project.hqPort = port;
@@ -106,7 +107,6 @@ async function main() {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const distDir = join(root, "dist");
   const uiPort = Number(process.env.HQ_UI_PORT ?? 5173);
-  const uiOrigin = dev ? `http://localhost:${uiPort}` : `http://127.0.0.1:${port}`;
   if (!dev && !existsSync(join(distDir, "index.html"))) log.warn("No built UI found. Run `pnpm build` first, or use `pnpm dev:hq`.");
 
   const ifaces = networkInterfaces();
@@ -130,27 +130,12 @@ async function main() {
   const github = new GitHubSync(hub, planner);
   github.start();
 
-  // HQ's own browser tab: loopback (or the one address HQ is bound to). Never the LAN URL.
-  const local = dev ? uiOrigin : `http://${urlHost(localAddress(host))}:${port}`;
-  const url = `${local}/?token=${uiToken}`;
-  log.info(`\n\n  JSM HQ is running → ${url}\n`);
-  if (isExposed(host)) {
-    const lan = lanAddress(host, ifaces);
-    const shown = lan ? `http://${urlHost(lan)}:${dev ? uiPort : port}/?token=${uiToken}` : null;
-    log.warn(
-      [
-        `HQ is reachable from your network (listening on ${urlHost(host)}:${port}).`,
-        "  • Anyone on the network who has the URL and token can control your agents and their terminals (a remote shell).",
-        "  • It is plain http: the token and all terminal input and output are unencrypted on the wire.",
-        "  • Use a network you trust, a VPN such as Tailscale, an ssh tunnel (ssh -L), or an HTTPS reverse proxy (then add --allow-origin https://your.name).",
-        shown ? `From another device open:\n\n  ${shown}\n` : "No network address found for this machine; use its IP or name with the port and ?token=… above.",
-        dev ? "--dev: that page is served by Vite, which must also listen on the network: start it with `vite --host` (pnpm dev:hq:host does both). Use an IP address, not a name." : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
-  }
-  if (!flag("no-open")) {
+  const startup = describeStartup({ host, port, uiPort, dev, token: uiToken, interfaces: ifaces, hostSource });
+  log.info(startup.info);
+  if (startup.warn) log.warn(startup.warn);
+  // Open HQ's own tab on the local URL (never a LAN one). A headless Linux box has no browser: skip quietly.
+  if (!flag("no-open") && canOpenBrowser(process.platform, process.env)) {
+    const url = startup.localUrl;
     // Windows: rundll32 hands the URL to the default browser without a shell (the token has no special chars, but `&` would).
     const [opener, args] = process.platform === "darwin" ? ["open", [url]] : process.platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", url]] : ["xdg-open", [url]];
     // Give Vite a moment in dev.

@@ -93,7 +93,7 @@ By default HQ only listens on `127.0.0.1`. To open the console from a phone or a
 npx @therealjsmastery/jsm-hq@latest --host 0.0.0.0     # or: HQ_HOST=0.0.0.0
 ```
 
-HQ prints a link with this machine's network address and your token. `--allow-origin https://hq.example.com` (repeatable) adds a custom name, e.g. for a reverse proxy.
+HQ prints the link to open (this machine's network address plus your token) as its first line. `--allow-origin https://hq.example.com` (repeatable) adds a custom name, e.g. for a reverse proxy.
 
 **The console includes terminals, so this is remote shell access.** Anyone with the link can control your agents, and `--host` serves plain `http`: the token and terminal traffic are unencrypted. Use a trusted network, a VPN such as Tailscale (`--host <tailscale ip>`), an SSH tunnel (`ssh -L 7420:127.0.0.1:7420 you@this-machine`, no `--host` needed), or an HTTPS reverse proxy. Details: [Getting started](docs/getting-started.md#use-from-another-device).
 
